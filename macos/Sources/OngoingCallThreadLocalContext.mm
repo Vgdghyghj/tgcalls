@@ -331,7 +331,7 @@
 
 @implementation CallVideoFrameData
 
-- (instancetype)initWithBuffer:(id<CallVideoFrameBuffer>)buffer frame:(webrtc::VideoFrame const &)frame mirrorHorizontally:(bool)mirrorHorizontally mirrorVertically:(bool)mirrorVertically {
+- (instancetype)initWithBuffer:(id<CallVideoFrameBuffer>)buffer frame:(webrtc::VideoFrame const &)frame mirrorHorizontally:(bool)mirrorHorizontally mirrorVertically:(bool)mirrorVertically hasDeviceRelativeVideoRotation:(bool)hasDeviceRelativeVideoRotation deviceRelativeVideoRotation:(OngoingCallVideoOrientationWebrtc)deviceRelativeVideoRotation {
     self = [super init];
     if (self != nil) {
         _buffer = buffer;
@@ -361,6 +361,9 @@
                 break;
             }
         }
+        
+        _hasDeviceRelativeOrientation = hasDeviceRelativeVideoRotation;
+        _deviceRelativeOrientation = deviceRelativeVideoRotation;
 
         _mirrorHorizontally = mirrorHorizontally;
         _mirrorVertically = mirrorVertically;
@@ -369,6 +372,7 @@
 }
 
 @end
+
 
 namespace {
 
@@ -410,6 +414,9 @@ private:
 
             bool mirrorHorizontally = false;
             bool mirrorVertically = false;
+            
+            bool hasDeviceRelativeVideoRotation = false;
+            OngoingCallVideoOrientationWebrtc deviceRelativeVideoRotation = OngoingCallVideoOrientation0;
 
             if (videoFrame.video_frame_buffer()->type() == webrtc::VideoFrameBuffer::Type::kNative) {
                 id<RTC_OBJC_TYPE(RTCVideoFrameBuffer)> nativeBuffer = static_cast<webrtc::ObjCFrameBuffer *>(videoFrame.video_frame_buffer().get())->wrapped_frame_buffer();
@@ -419,17 +426,40 @@ private:
                 }
                 if ([nativeBuffer isKindOfClass:[TGRTCCVPixelBuffer class]]) {
                     if (((TGRTCCVPixelBuffer *)nativeBuffer).shouldBeMirrored) {
-                        switch (videoFrame.rotation()) {
-                            case webrtc::kVideoRotation_0:
-                            case webrtc::kVideoRotation_180:
-                                mirrorHorizontally = true;
-                                break;
-                            case webrtc::kVideoRotation_90:
-                            case webrtc::kVideoRotation_270:
-                                mirrorVertically = true;
-                                break;
-                            default:
-                                break;
+                        TGRTCCVPixelBuffer *tgNativeBuffer = (TGRTCCVPixelBuffer *)nativeBuffer;
+                        if (tgNativeBuffer.shouldBeMirrored) {
+                            switch (videoFrame.rotation()) {
+                                case webrtc::kVideoRotation_0:
+                                case webrtc::kVideoRotation_180:
+                                    mirrorHorizontally = true;
+                                    break;
+                                case webrtc::kVideoRotation_90:
+                                case webrtc::kVideoRotation_270:
+                                    mirrorVertically = true;
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                        if (tgNativeBuffer.deviceRelativeVideoRotation != -1) {
+                            hasDeviceRelativeVideoRotation = true;
+                            switch (tgNativeBuffer.deviceRelativeVideoRotation) {
+                                case webrtc::kVideoRotation_0:
+                                    deviceRelativeVideoRotation = OngoingCallVideoOrientation0;
+                                    break;
+                                case webrtc::kVideoRotation_90:
+                                    deviceRelativeVideoRotation = OngoingCallVideoOrientation90;
+                                    break;
+                                case webrtc::kVideoRotation_180:
+                                    deviceRelativeVideoRotation = OngoingCallVideoOrientation180;
+                                    break;
+                                case webrtc::kVideoRotation_270:
+                                    deviceRelativeVideoRotation = OngoingCallVideoOrientation270;
+                                    break;
+                                default:
+                                    deviceRelativeVideoRotation = OngoingCallVideoOrientation0;
+                                    break;
+                            }
                         }
                     }
                 }
@@ -442,8 +472,9 @@ private:
             }
 
             if (storedSink && mappedBuffer) {
-                storedSink([[CallVideoFrameData alloc] initWithBuffer:mappedBuffer frame:videoFrame mirrorHorizontally:mirrorHorizontally mirrorVertically:mirrorVertically]);
+                storedSink([[CallVideoFrameData alloc] initWithBuffer:mappedBuffer frame:videoFrame mirrorHorizontally:mirrorHorizontally mirrorVertically:mirrorVertically hasDeviceRelativeVideoRotation:hasDeviceRelativeVideoRotation deviceRelativeVideoRotation:deviceRelativeVideoRotation]);
             }
+
         }));
     }
     return self;
