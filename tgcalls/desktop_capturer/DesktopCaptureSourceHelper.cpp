@@ -30,6 +30,7 @@
 #import <QuartzCore/QuartzCore.h>
 #endif // WEBRTC_MAC
 
+
 namespace tgcalls {
 namespace {
 
@@ -134,6 +135,14 @@ SourceFrameCallbackImpl::SourceFrameCallbackImpl(DesktopSize size, int fps)
 : size_(size) {
 }
 
+DesktopSize aspectFitted(DesktopSize from, DesktopSize to) {
+    CGFloat scale = MIN(from.width / MAX(1.0, to.width), from.height / MAX(1.0, to.height));
+    DesktopSize size;
+    size.width = ceil(to.width * scale);
+    size.height = ceil(to.height * scale);
+    return size;
+}
+
 void SourceFrameCallbackImpl::OnCaptureResult(
 	    webrtc::DesktopCapturer::Result result,
 	    std::unique_ptr<webrtc::DesktopFrame> frame) {
@@ -155,10 +164,17 @@ void SourceFrameCallbackImpl::OnCaptureResult(
     }
 
     const auto frameSize = frame->size();
-    auto fittedSize = (frameSize.width() >= size_.width * 2
-        || frameSize.height() >= size_.height * 2)
-        ? DesktopSize{ frameSize.width() / 2, frameSize.height() / 2 }
-        : DesktopSize{ frameSize.width(), frameSize.height() };
+    
+    DesktopSize fromSize;
+    fromSize.width = frameSize.width();
+    fromSize.height = frameSize.height();
+    
+    auto fittedSize = aspectFitted(size_, fromSize);
+    
+//    auto fittedSize = (frameSize.width() >= size_.width * 2
+//        || frameSize.height() >= size_.height * 2)
+//        ? DesktopSize{ frameSize.width() / 3, frameSize.height() / 3 }
+//        : DesktopSize{ frameSize.width(), frameSize.height() };
 
     fittedSize.width -= (fittedSize.width % 4);
     fittedSize.height -= (fittedSize.height % 4);
