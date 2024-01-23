@@ -169,7 +169,13 @@ void SourceFrameCallbackImpl::OnCaptureResult(
     fromSize.width = frameSize.width();
     fromSize.height = frameSize.height();
     
-    auto fittedSize = aspectFitted(size_, fromSize);
+    DesktopSize fittedSize;
+    if (frameSize.width() > size_.width || frameSize.height() > size_.height) {
+        fittedSize = aspectFitted(size_, fromSize);
+    } else {
+        fittedSize.width = frameSize.width();
+        fittedSize.height = frameSize.height();
+    }
     
 //    auto fittedSize = (frameSize.width() >= size_.width * 2
 //        || frameSize.height() >= size_.height * 2)
