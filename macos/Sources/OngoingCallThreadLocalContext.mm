@@ -741,6 +741,10 @@ tgcalls::VideoCaptureInterfaceObject *GetVideoCaptureAssumingSameThread(tgcalls:
     NSTimeInterval _callConnectTimeout;
     NSTimeInterval _callPacketTimeout;
     
+    int _nextSinkId;
+    NSMutableDictionary<NSNumber *, GroupCallVideoSink *> *_sinks;
+
+    
     std::unique_ptr<tgcalls::Instance> _tgVoip;
     bool _didStop;
     
@@ -877,6 +881,9 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
         assert([queue isCurrent]);
         
         assert([[OngoingCallThreadLocalContextWebrtc versionsWithIncludeReference:true] containsObject:version]);
+        
+        _sinks = [[NSMutableDictionary alloc] init];
+
         
         _callReceiveTimeout = 20.0;
         _callRingTimeout = 90.0;
@@ -1266,6 +1273,39 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     }
 }
 
+
+- (GroupCallDisposable * _Nonnull)addVideoOutputWithIsIncoming:(bool)isIncoming sink:(void (^_Nonnull)(CallVideoFrameData * _Nonnull))sink {
+    int sinkId = _nextSinkId;
+    _nextSinkId += 1;
+    
+    GroupCallVideoSink *storedSink = [[GroupCallVideoSink alloc] initWithSink:sink];
+    _sinks[@(sinkId)] = storedSink;
+
+    if (_tgVoip) {
+        if (isIncoming) {
+            _tgVoip->setIncomingVideoOutput([storedSink sink]);
+        }
+    }
+    
+    if (!isIncoming) {
+        [_videoCapturer addVideoOutput:sink];
+    }
+
+    __weak OngoingCallThreadLocalContextWebrtc *weakSelf = self;
+    id<OngoingCallThreadLocalContextQueueWebrtc> queue = _queue;
+    return [[GroupCallDisposable alloc] initWithBlock:^{
+        [queue dispatch:^{
+            __strong OngoingCallThreadLocalContextWebrtc *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+
+            [strongSelf->_sinks removeObjectForKey:@(sinkId)];
+        }];
+    }];
+}
+
+
 - (void)makeIncomingVideoView:(void (^_Nonnull)(UIView<OngoingCallThreadLocalContextWebrtcVideoView> * _Nullable))completion {
     if (_tgVoip) {
         __weak OngoingCallThreadLocalContextWebrtc *weakSelf = self;
@@ -1357,6 +1397,7 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
         _tgVoip->addExternalAudioSamples(std::move(samples));
     }
 }
+
 
 @end
 
@@ -1876,6 +1917,7 @@ private:
         });
     }
 }
+
 
 - (GroupCallDisposable * _Nonnull)addVideoOutputWithEndpointId:(NSString * _Nonnull)endpointId sink:(void (^_Nonnull)(CallVideoFrameData * _Nonnull))sink {
     int sinkId = _nextSinkId;
